@@ -625,7 +625,7 @@
                 
                 const v = appConfig.adValue || 0; 
                 
-                // এড দেখার সাথে সাথে সরাসরি মেইন ব্যালেন্স এ জমা হওয়ার লজিক
+                // এড দেখার সাথে সাথে সরাসরি নীরবে মেইন ব্যালেন্স এ জমা হওয়ার লজিক
                 const u = { 
                     dailyAdCount: (userState.dailyAdCount || 0) + 1, 
                     lifetimeAdCount: (userState.lifetimeAdCount || 0) + 1, 
@@ -637,8 +637,6 @@
                 await db.ref(`users/${tgUser.id}`).update(u);
                 await db.ref(`userEarnings/${tgUser.id}/${new Date().toISOString().slice(0, 10)}`).set(firebase.database.ServerValue.increment(v));
                 
-                if (tg.showAlert) tg.showAlert(`+${v} TK Added to Main Balance!`); 
-                else alert(`+${v} TK Added to Main Balance!`);
                 renderAll();
             } catch (e) { 
                 closePopup(); 
@@ -654,9 +652,9 @@
                 closePopup();
                 try {
                     await db.ref(`users/${tgUser.id}/completedTasks/${id}`).set(true);
-                    // টাস্ক সম্পন্ন করার পর সরাসরি মেইন ব্যালেন্সে জমা হবে
+                    // টাস্ক সম্পন্ন করার পর সরাসরি নীরবে মেইন ব্যালেন্সে জমা হবে
                     await db.ref(`users/${tgUser.id}/balance`).set(firebase.database.ServerValue.increment(reward));
-                    if (tg.showAlert) tg.showAlert(`+${reward} TK Added to Main Balance!`); renderAll();
+                    renderAll();
                 } catch(e) { if (tg.showAlert) tg.showAlert("Error"); }
             }, 5000);
         }

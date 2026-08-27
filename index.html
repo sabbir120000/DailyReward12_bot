@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+\<!DOCTYPE html>
 <html lang="bn">
 <head>
     <meta charset="UTF-8">
@@ -290,7 +290,7 @@
         if (tg.setBackgroundColor) tg.setBackgroundColor('#0f172a');
 
         const firebaseConfig = {
-         apiKey: "AIzaSyBwa5NH93_BUmkzn0sv1wY8OCkKfSvUASg",
+             apiKey: "AIzaSyBwa5NH93_BUmkzn0sv1wY8OCkKfSvUASg",
   authDomain: "dailyreward12-69ed9.firebaseapp.com",
   databaseURL: "https://dailyreward12-69ed9-default-rtdb.firebaseio.com",
   projectId: "dailyreward12-69ed9",
@@ -334,6 +334,7 @@
             document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             if (pageId === 'leaderboard-page') renderLeaderboard(document.getElementById('btn-ref-board').classList.contains('active') ? 'referral' : 'earning');
+            if (pageId === 'profile-page') loadHistory();
         }
 
         function showPopup(htmlContent) { document.getElementById('popup-body').innerHTML = htmlContent; document.getElementById('popup').style.display = 'flex'; }
@@ -431,11 +432,28 @@
         }
 
         async function loadHistory() {
-            const snaps = await Promise.all(['pending', 'completed', 'rejected'].map(s => db.ref(`withdrawals/${s}`).orderByChild('userId').equalTo(tgUser.id).once('value')));
-            transactions = [];
-            snaps.forEach(s => s.forEach(c => transactions.push(c.val())));
-            transactions.sort((a, b) => b.timestamp - a.timestamp);
-            renderHistory();
+            if (!tgUser || !tgUser.id) return;
+            try {
+                const currentUserId = tgUser.id;
+                // String এবং Number উভয় টাইপ ফিল্টারিং নিশ্চিত করা
+                const statuses = ['pending', 'completed', 'rejected'];
+                transactions = [];
+
+                for (let s of statuses) {
+                    const snap = await db.ref(`withdrawals/${s}`).once('value');
+                    snap.forEach(c => {
+                        const val = c.val();
+                        if (val && (val.userId == currentUserId || val.userId === String(currentUserId))) {
+                            transactions.push({ ...val, status: s });
+                        }
+                    });
+                }
+
+                transactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                renderHistory();
+            } catch (err) {
+                console.error("History load error:", err);
+            }
         }
 
         function renderAll() {
@@ -450,7 +468,6 @@
             document.getElementById('total-income').innerText = (userState.totalEarned || 0).toFixed(2);
             renderChart(); renderHomeButtons();
             
-            // সরাসরি মেইন ব্যালেন্স প্রদর্শন করা হচ্ছে
             document.getElementById('earning-wallet').innerText = (userState.balance || 0).toFixed(2);
             document.getElementById('ad-progress-bar').style.width = `${Math.min(100, ((userState.dailyAdCount || 0) / (appConfig.dailyAdLimit || 1)) * 100)}%`;
             
@@ -526,10 +543,12 @@
 
         function renderHistory() {
             const d = document.getElementById('history-list'); d.innerHTML = '';
-            if(transactions.length === 0) { d.innerHTML = '<p style="text-align:center; color:#94a3b8">No transactions found.</p>'; return; }
+            if(!transactions || transactions.length === 0) { d.innerHTML = '<p style="text-align:center; color:#94a3b8">No transactions found.</p>'; return; }
             transactions.forEach(t => {
-                let c = t.status === 'completed' ? 'var(--success)' : (t.status === 'pending' ? 'var(--pending)' : 'var(--danger)');
-                d.innerHTML += `<div class="list-item"><div class="list-info"><h4>${t.amount} TK - ${t.method}</h4><p>${new Date(t.timestamp).toLocaleDateString()}</p></div><span style="color:${c}; font-size:0.8rem; font-weight:bold; text-transform:uppercase">${t.status}</span></div>`;
+                let statusText = t.status || 'pending';
+                let c = statusText === 'completed' ? 'var(--success)' : (statusText === 'pending' ? 'var(--pending)' : 'var(--danger)');
+                let dateStr = t.timestamp ? new Date(t.timestamp).toLocaleDateString() : 'Recent';
+                d.innerHTML += `<div class="list-item"><div class="list-info"><h4>${t.amount} TK - ${t.method}</h4><p>${dateStr}</p></div><span style="color:${c}; font-size:0.8rem; font-weight:bold; text-transform:uppercase">${statusText}</span></div>`;
             });
         }
         
@@ -625,7 +644,6 @@
                 
                 const v = appConfig.adValue || 0; 
                 
-                // এড দেখার সাথে সাথে সরাসরি নীরবে মেইন ব্যালেন্স এ জমা হওয়ার লজিক
                 const u = { 
                     dailyAdCount: (userState.dailyAdCount || 0) + 1, 
                     lifetimeAdCount: (userState.lifetimeAdCount || 0) + 1, 
@@ -652,7 +670,6 @@
                 closePopup();
                 try {
                     await db.ref(`users/${tgUser.id}/completedTasks/${id}`).set(true);
-                    // টাস্ক সম্পন্ন করার পর সরাসরি নীরবে মেইন ব্যালেন্সে জমা হবে
                     await db.ref(`users/${tgUser.id}/balance`).set(firebase.database.ServerValue.increment(reward));
                     renderAll();
                 } catch(e) { if (tg.showAlert) tg.showAlert("Error"); }
@@ -663,20 +680,47 @@
 
         document.getElementById('withdraw-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const method = document.getElementById('w-method').value, acc = document.getElementById('w-account').value, amt = parseFloat(document.getElementById('w-amount').value);
-            const conf = appConfig.withdrawMethods.find(m => m.name === method);
+            const method = document.getElementById('w-method').value;
+            const acc = document.getElementById('w-account').value;
+            const amt = parseFloat(document.getElementById('w-amount').value);
+            
+            const conf = appConfig.withdrawMethods?.find(m => m.name === method);
             if (!conf) return;
-            if (amt < conf.min) { if (tg.showAlert) tg.showAlert(`Min: ${conf.min}`); return; }
-            if (amt > userState.balance) { if (tg.showAlert) tg.showAlert("Low Balance"); return; }
+            if (amt < conf.min) { if (tg.showAlert) tg.showAlert(`Min: ${conf.min}`); else alert(`Min: ${conf.min}`); return; }
+            if (amt > userState.balance) { if (tg.showAlert) tg.showAlert("Low Balance"); else alert("Low Balance"); return; }
 
-            const btn = document.getElementById('w-submit-btn'); btn.disabled = true; btn.innerText = "Sending...";
+            const btn = document.getElementById('w-submit-btn'); 
+            btn.disabled = true; 
+            btn.innerText = "Sending...";
+            
             try {
                 await db.ref(`users/${tgUser.id}/balance`).set(firebase.database.ServerValue.increment(-amt));
-                const req = { userId: tgUser.id, userName: userState.firstName, method: method, account: acc, amount: amt, status: 'pending', timestamp: firebase.database.ServerValue.TIMESTAMP };
+                
+                const req = { 
+                    userId: tgUser.id, 
+                    userName: userState.firstName, 
+                    method: method, 
+                    account: acc, 
+                    amount: amt, 
+                    status: 'pending', 
+                    timestamp: firebase.database.ServerValue.TIMESTAMP 
+                };
+                
                 await db.ref('withdrawals/pending').push(req);
-                if (tg.showAlert) tg.showAlert("Request Sent!"); document.getElementById('withdraw-form').reset();
+                
+                // উইথড্র সফল হলে ডাটা রিফ্রেশ করা
+                await loadHistory();
+                
+                if (tg.showAlert) tg.showAlert("Request Sent!"); else alert("Request Sent!");
+                document.getElementById('withdraw-form').reset();
                 renderAll();
-            } catch(e) { if (tg.showAlert) tg.showAlert("Error"); } finally { btn.disabled = false; btn.innerText = "Request Withdraw"; }
+            } catch(e) { 
+                console.error(e);
+                if (tg.showAlert) tg.showAlert("Error sending request"); else alert("Error sending request");
+            } finally { 
+                btn.disabled = false; 
+                btn.innerText = "Request Withdraw"; 
+            }
         });
 
         document.addEventListener('DOMContentLoaded', init);
